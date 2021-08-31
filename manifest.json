@@ -1,6 +1,6 @@
 {
     "name": "Pick_N_Cards",
-    "version_number": "0.0.0",
+    "version_number": "0.0.1",
     "website_url": "https://github.com/pdcook/PickNCards",
     "description": "Pick more cards! (In a way compatible with other mods!)",
     "dependencies": [

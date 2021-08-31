@@ -19,12 +19,14 @@ using System.Collections.Generic;
 namespace CompetitiveRounds
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.0.0.0")]
+    [BepInPlugin(ModId, ModName, "0.0.1")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
         private const string ModId = "pykess.rounds.plugins.pickncards";
         private const string ModName = "Pick N Cards";
+
+        private const int maxPicks = 5;
 
 
         public static ConfigEntry<int> PicksConfig;
@@ -78,11 +80,11 @@ namespace CompetitiveRounds
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
             void PicksChanged(float val)
             {
-                PickNCards.PicksConfig.Value = UnityEngine.Mathf.RoundToInt(val);
+                PickNCards.PicksConfig.Value = UnityEngine.Mathf.RoundToInt(UnityEngine.Mathf.Clamp(val,1f,(float)PickNCards.maxPicks));
                 PickNCards.picks = PickNCards.PicksConfig.Value;
                 OnHandShakeCompleted();
             }
-            MenuHandler.CreateSlider("Number of cards to pick", menu, 30, 1f, 5f, PickNCards.PicksConfig.Value, PicksChanged, out UnityEngine.UI.Slider _, true);
+            MenuHandler.CreateSlider("Number of cards to pick", menu, 30, 1f, (float)PickNCards.maxPicks, PickNCards.PicksConfig.Value, PicksChanged, out UnityEngine.UI.Slider _, true);
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
         }
         internal static IEnumerator SetPlayersCanPick(bool set)
