@@ -15,16 +15,18 @@ using System.Linq;
 using Photon.Pun;
 using UnboundLib.Networking;
 using System.Collections.Generic;
+using DrawNCards;
 
-namespace CompetitiveRounds
+namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.0.1")]
+    [BepInPlugin(ModId, ModName, "0.1.0")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
         private const string ModId = "pykess.rounds.plugins.pickncards";
         private const string ModName = "Pick N Cards";
+        private const string CompatibilityModName = "PickNCards";
 
         private const int maxPicks = 5;
 
@@ -37,7 +39,9 @@ namespace CompetitiveRounds
         private void Awake()
         {
             // bind configs with BepInEx
-            PicksConfig = Config.Bind("PickNCards", "Picks", 1, "Total number of card picks per player per pick phase");
+            PicksConfig = Config.Bind(CompatibilityModName, "Picks", 1, "Total number of card picks per player per pick phase");
+
+            DrawNCards.DrawNCards.NumDrawsConfig = Config.Bind(CompatibilityModName, "Draws", 5, "Number of cards drawn from the deck to choose from");
 
             // apply patches
             new Harmony(ModId).PatchAll();
@@ -51,7 +55,7 @@ namespace CompetitiveRounds
             Unbound.RegisterCredits("Pick N Cards", new string[] { "Pykess (Code)", "Willis (Original picktwocards concept, icon)"}, new string[] { "github", "Buy me a coffee" }, new string[] { "https://github.com/pdcook/PickNCards", "https://www.buymeacoffee.com/Pykess" });
 
             // add GUI to modoptions menu
-            Unbound.RegisterMenu("Pick N Cards", () => { }, this.NewGUI, null, false);
+            Unbound.RegisterMenu(ModName, () => { }, this.NewGUI, null, false);
 
             
             // handshake to sync settings
@@ -60,23 +64,35 @@ namespace CompetitiveRounds
             // hooks for picking N cards
             GameModeManager.AddHook(GameModeHooks.HookPickStart, (gm) => PickNCards.SetPlayersCanPick(false));
             GameModeManager.AddHook(GameModeHooks.HookPickEnd, PickNCards.ExtraPicks);
+
+            // read settings to not orphan them
+            DrawNCards.DrawNCards.numDraws = DrawNCards.DrawNCards.NumDrawsConfig.Value;
+
+            // register credits with unbound
+            Unbound.RegisterCredits(ModName, new string[] { "Pykess" }, new string[] { "github", "Buy me a coffee" }, new string[] { "https://github.com/pdcook/ExtraChoices", "https://www.buymeacoffee.com/Pykess" });
+
+            // add hook to regenerate the cardchoice
+            GameModeManager.AddHook(GameModeHooks.HookInitStart, DrawNCards.DrawNCards.ChangeCardChoice);
+            GameModeManager.AddHook(GameModeHooks.HookGameStart, DrawNCards.DrawNCards.ChangeCardChoice);
+
         }
         private void OnHandShakeCompleted()
         {
             if (PhotonNetwork.IsMasterClient)
             {
-                NetworkingManager.RPC_Others(typeof(PickNCards), nameof(SyncSettings), new object[] { PickNCards.picks });
+                NetworkingManager.RPC_Others(typeof(PickNCards), nameof(SyncSettings), new object[] { PickNCards.picks, DrawNCards.DrawNCards.numDraws });
             }
         }
         [UnboundRPC]
-        private static void SyncSettings(int host_picks)
+        private static void SyncSettings(int host_picks, int host_draws)
         {
             PickNCards.picks = host_picks;
+            DrawNCards.DrawNCards.numDraws = host_draws;
         }
         private void NewGUI(GameObject menu)
         {
 
-            MenuHandler.CreateText("Pick N Cards Options", menu, out TextMeshProUGUI _, 60);
+            MenuHandler.CreateText(ModName+" Options", menu, out TextMeshProUGUI _, 60);
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
             void PicksChanged(float val)
             {
@@ -85,6 +101,16 @@ namespace CompetitiveRounds
                 OnHandShakeCompleted();
             }
             MenuHandler.CreateSlider("Number of cards to pick", menu, 30, 1f, (float)PickNCards.maxPicks, PickNCards.PicksConfig.Value, PicksChanged, out UnityEngine.UI.Slider _, true);
+            MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
+            MenuHandler.CreateText("Draw N Cards Options", menu, out TextMeshProUGUI _, 60);
+            MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
+            void DrawsChanged(float val)
+            {
+                DrawNCards.DrawNCards.NumDrawsConfig.Value = UnityEngine.Mathf.RoundToInt(UnityEngine.Mathf.Clamp(val, 1f, (float)DrawNCards.DrawNCards.maxDraws));
+                DrawNCards.DrawNCards.numDraws = DrawNCards.DrawNCards.NumDrawsConfig.Value;
+                OnHandShakeCompleted();
+            }
+            MenuHandler.CreateSlider("Number of cards to draw", menu, 30, 1f, (float)DrawNCards.DrawNCards.maxDraws, DrawNCards.DrawNCards.NumDrawsConfig.Value, DrawsChanged, out UnityEngine.UI.Slider _, true);
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
         }
         internal static IEnumerator SetPlayersCanPick(bool set)
