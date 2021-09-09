@@ -20,7 +20,7 @@ using DrawNCards;
 namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.1.0")]
+    [BepInPlugin(ModId, ModName, "0.1.1")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
@@ -56,7 +56,6 @@ namespace PickNCards
 
             // add GUI to modoptions menu
             Unbound.RegisterMenu(ModName, () => { }, this.NewGUI, null, false);
-
             
             // handshake to sync settings
             Unbound.RegisterHandshake(PickNCards.ModId, this.OnHandShakeCompleted);
@@ -67,13 +66,6 @@ namespace PickNCards
 
             // read settings to not orphan them
             DrawNCards.DrawNCards.numDraws = DrawNCards.DrawNCards.NumDrawsConfig.Value;
-
-            // register credits with unbound
-            Unbound.RegisterCredits(ModName, new string[] { "Pykess" }, new string[] { "github", "Buy me a coffee" }, new string[] { "https://github.com/pdcook/ExtraChoices", "https://www.buymeacoffee.com/Pykess" });
-
-            // add hook to regenerate the cardchoice
-            GameModeManager.AddHook(GameModeHooks.HookInitStart, DrawNCards.DrawNCards.ChangeCardChoice);
-            GameModeManager.AddHook(GameModeHooks.HookGameStart, DrawNCards.DrawNCards.ChangeCardChoice);
 
         }
         private void OnHandShakeCompleted()

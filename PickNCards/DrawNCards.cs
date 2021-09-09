@@ -30,46 +30,52 @@ namespace DrawNCards
         public static ConfigEntry<int> NumDrawsConfig;
         internal static int numDraws;
 
-        internal static IEnumerator ChangeCardChoice(IGameModeHandler gm)
-        {
-            CardChoicePatchStart.Postfix(CardChoice.instance);
-            yield break;
-        }
-        private const float arc_A = 8.079100134f;
-        private const float arc_B = 0.0f;
-        private const float arc_C = -0.01536240597f;
-        private const float Harc_A = 2.4f;
-        private const float Harc_B = 1.0f;
-        private const float Harc_C = -9.1f;
+        private const float arc_A = 0.2102040816f;
+        private const float arc_B = 1.959183674f;
+        private const float arc_C = -1.959183674f;
+        private const float Harc_A = 1f;
+        private const float Harc_B = 2f;
+        private const float Harc_C = -1.7f;
         internal static float Arc(float x, float offset = 0f)
         {
+            // inputs and outputs are in SCREEN UNITS
+
             if (offset == 0f)
             {
-                // approximate parabola of default card arc, correlation coeff ~ 0.9998
+                // approximate parabola of default card arc, correlation coeff = 1
                 return arc_C * x * x + arc_B * x + arc_A + offset;
             }
             else if (offset < 0f)
             {
                 // approximate hyperbola of default card arc
-                return -UnityEngine.Mathf.Sqrt(1 + (Harc_B * Harc_B) * x * x / (Harc_A * Harc_A)) - Harc_C + offset;
+                return -UnityEngine.Mathf.Sqrt(1 + (Harc_B * Harc_B) * UnityEngine.Mathf.Pow(x - xC, 2f) / (Harc_A * Harc_A)) - Harc_C + offset;
             }
             else
             {
                 // flattened hyperbola for top arc
-                return -UnityEngine.Mathf.Sqrt(1 + (Harc_B * Harc_B) * x * x / (2f * Harc_A * Harc_A)) - Harc_C + offset;
+                return -UnityEngine.Mathf.Sqrt(1 + (Harc_B * Harc_B) * UnityEngine.Mathf.Pow(x - xC, 2f) / (2f * Harc_A * Harc_A)) - Harc_C + offset;
             }
         }
-        private const float absMaxX = 25f;
-        private const float z = -5f;
+        private const float xC = 0.5f;
+        private const float yC = 0.5f;
+        private const float absMaxX = 0.85f;
+        private const float defMaxXWorld = 25f;
+        internal const float z = -5f;
         internal static List<Vector3> GetPositions(int N, float offset = 0f)
         {
+            // everything is in SCREEN UNITS
+
             if (N == 0)
             {
                 throw new Exception("Must have at least one card.");
             }
             else if (N == 1)
             {
-                return new List<Vector3>() { new Vector3(0f, Arc(0f, offset), z) };
+                return new List<Vector3>() { new Vector3(xC, yC, z) };
+            }
+            else if (N==3)
+            {
+                offset -= 0.025f;
             }
             else if (N > DrawNCards.maxDraws / 2)
             {
@@ -79,29 +85,29 @@ namespace DrawNCards
                 int k2;
                 if (N1 >= N2) { k1 = N1; k2 = N2; }
                 else { k1 = N2; k2 = N1; }
-                List<Vector3> positions1 = GetPositions(k1, offset - 9.5f);
-                List<Vector3> positions2 = GetPositions(k2, offset + 3.5f);
+                List<Vector3> positions1 = GetPositions(k1, offset - 0.16f);
+                List<Vector3> positions2 = GetPositions(k2, offset + 0.125f);
                 return positions1.Concat(positions2).ToList();
             }
 
             float maxX = absMaxX;
 
-            if (N < 4) { maxX = 13f; }
+            if (N < 4) { maxX = 0.75f; }
             else
             {
-                maxX = UnityEngine.Mathf.Clamp(maxX + 2f * (N - 5), maxX, 30f);
+                maxX = UnityEngine.Mathf.Clamp(maxX + 0.025f * (N - 5), maxX, 0.925f);
             }
 
             // we assume symmetry about x = 0 and fill from the center out
             List<float> xs = new List<float>() { };
 
-            float x_init = 0f;
+            float x_init = xC;
 
-            // if N is odd, place a card exactly at 0
+            // if N is odd, place a card exactly at the center
             if (N % 2 != 0)
             {
-                x_init = 0f;
-                xs.Add(0f);
+                x_init = xC;
+                xs.Add(x_init);
                 N--;
 
                 // now N is guarunteed to be even, so:
@@ -114,14 +120,14 @@ namespace DrawNCards
                 for (int i = 0; i < k; i++)
                 {
                     x += step;
-                    xs.Add(x);
-                    xs.Add(-x);
+                    xs.Add(x); // add the next point to the right and its reflection over xC
+                    xs.Add(2f*xC-x);
                 }
             }
             // if N is even, do it the easy way
             else
             {
-                x_init = -maxX;
+                x_init = 1f-maxX;
 
                 float step = (maxX - x_init) / (N - 1);
 
@@ -148,24 +154,32 @@ namespace DrawNCards
         }
         internal static Vector3 GetScale(int N)
         {
-            if (N <= 5)
+            // camera scale factor
+            float factor = 1.04f * absMaxX.xWorldPoint() / defMaxXWorld;
+
+            if (N == 5)
             {
-                return new Vector3(1f, 1f, 1f);
+                return new Vector3(1f, 1f, 1f) * factor;
+            }
+            else if (N<5)
+            {
+                return new Vector3(1f, 1f, 1f) * factor * (1f + 1f / (2f*N));
             }
             else if (N > DrawNCards.maxDraws / 2)
             {
-                return new Vector3(1f, 1f, 1f) * UnityEngine.Mathf.Clamp(5f / (N / 2 + 2), 3f / 5f, 1f);
+                return new Vector3(1f, 1f, 1f) * factor * UnityEngine.Mathf.Clamp(5f / (N / 2 + 2), 3f / 5f, 1f);
             }
             else
             {
-                return new Vector3(1f, 1f, 1f) * UnityEngine.Mathf.Clamp(5f / (N - 1), 3f / 5f, 1f);
+                return new Vector3(1f, 1f, 1f) * factor * UnityEngine.Mathf.Clamp(5f / (N - 1), 3f / 5f, 1f);
             }
 
         }
         private const float maxPhi = 15f;
         internal static float ArcAngle(float x)
         {
-            return (-maxPhi / absMaxX) * x;
+            // x is in SCREEN units
+            return (-maxPhi / (absMaxX-xC)) * (x-xC);
         }
         internal static List<Quaternion> GetRotations(int N)
         {
@@ -195,12 +209,16 @@ namespace DrawNCards
         [UnboundRPC]
         private static void RPCO_AddRemotelySpawnedCard(int viewID)
         {
-            PhotonView.Find(viewID).gameObject.transform.localScale = DrawNCards.GetScale(DrawNCards.numDraws);
+            GameObject card = PhotonView.Find(viewID).gameObject;
+
+            // set the scale
+            card.transform.localScale = DrawNCards.GetScale(DrawNCards.numDraws);
         }
     }
+    // reconfigure card placement before each pick in case the map size has changed
     [Serializable]
-    [HarmonyPatch(typeof(CardChoice), "Start")]
-    class CardChoicePatchStart
+    [HarmonyPatch(typeof(CardChoice), "StartPick")]
+    class CardChoicePatchStartPick
     {
         private static GameObject _cardVis = null;
         private static GameObject cardVis
@@ -216,7 +234,7 @@ namespace DrawNCards
             }
             set { }
         }
-        internal static void Postfix(CardChoice __instance)
+        private static void Prefix(CardChoice __instance)
         {
             // remove all children except the zeroth
             foreach (Transform child in ((Transform[])CardChoice.instance.GetFieldValue("children")).Skip(1))
@@ -224,7 +242,7 @@ namespace DrawNCards
                 UnityEngine.GameObject.Destroy(child.gameObject);
             }
 
-            List<Vector3> positions = DrawNCards.GetPositions(DrawNCards.numDraws);
+            List<Vector3> positions = DrawNCards.GetPositions(DrawNCards.numDraws).WorldPoint();
             List<Quaternion> rotations = DrawNCards.GetRotations(DrawNCards.numDraws);
             Vector3 scale = DrawNCards.GetScale(DrawNCards.numDraws);
 
@@ -244,7 +262,6 @@ namespace DrawNCards
             }
 
             __instance.SetFieldValue("children", children.ToArray());
-
         }
 
         
@@ -313,5 +330,61 @@ namespace DrawNCards
             return false; // skip original (BAD IDEA)
         }
     }
+    public static class WorldToScreenExtensions
+    {
+        public static Vector3 ScreenPoint(this Vector3 v3)
+        {
+            Vector3 vec = MainCam.instance.transform.GetComponent<Camera>().WorldToScreenPoint(v3);
+            vec.x /= (float)Screen.width;
+            vec.y /= (float)Screen.height;
+            vec.z = 0f;
 
+            return vec;
+        }
+
+        public static Vector3 WorldPoint(this Vector3 v3)
+        {
+            v3.x *= (float)Screen.width;
+            v3.y *= (float)Screen.height;
+            Vector3 vec = MainCam.instance.transform.GetComponent<Camera>().ScreenToWorldPoint(v3);
+            vec.z = DrawNCards.z;
+            return vec;
+        }
+
+        public static float xScreenPoint(this float x)
+        {
+            return ((new Vector3(x, 0f, 0f)).ScreenPoint()).x;
+        }
+        public static float xWorldPoint(this float x)
+        {
+            return ((new Vector3(x, 0f, 0f)).WorldPoint()).x;
+        }
+        public static float yScreenPoint(this float y)
+        {
+            return ((new Vector3(0f, y, 0f)).ScreenPoint()).y;
+        }
+        public static float yWorldPoint(this float y)
+        {
+            return ((new Vector3(0f, y, 0f)).WorldPoint()).y;
+        }
+
+        public static List<Vector3> ScreenPoint(this List<Vector3> v3)
+        {
+            List<Vector3> v3screen = new List<Vector3>() { };
+            foreach (Vector3 v in v3)
+            {
+                v3screen.Add(v.ScreenPoint());
+            }
+            return v3screen;
+        }
+        public static List<Vector3> WorldPoint(this List<Vector3> v3)
+        {
+            List<Vector3> v3screen = new List<Vector3>() { };
+            foreach (Vector3 v in v3)
+            {
+                v3screen.Add(v.WorldPoint());
+            }
+            return v3screen;
+        }
+    }
 }
