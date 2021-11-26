@@ -1,10 +1,10 @@
 {
     "name": "Pick_N_Cards",
-    "version_number": "0.1.1",
+    "version_number": "0.2.0",
     "website_url": "https://github.com/pdcook/PickNCards",
     "description": "Pick more cards! (In a way compatible with other mods!)",
     "dependencies": [
-        "willis81808-UnboundLib-2.7.1",
+        "willis81808-UnboundLib-2.7.7",
 	"BepInEx-BepInExPack_ROUNDS-5.4.1100"
     ]
 }

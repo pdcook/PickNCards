@@ -16,11 +16,12 @@ using Photon.Pun;
 using UnboundLib.Networking;
 using System.Collections.Generic;
 using DrawNCards;
+using System.Reflection.Emit;
 
 namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.1.1")]
+    [BepInPlugin(ModId, ModName, "0.2.0")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
@@ -32,7 +33,9 @@ namespace PickNCards
 
 
         public static ConfigEntry<int> PicksConfig;
+        public static ConfigEntry<float> DelayConfig;
         internal static int picks;
+        internal static float delay;
 
         internal static Dictionary<Player, bool> playerCanPickAgain = new Dictionary<Player, bool>() { };
 
@@ -43,6 +46,8 @@ namespace PickNCards
 
             DrawNCards.DrawNCards.NumDrawsConfig = Config.Bind(CompatibilityModName, "Draws", 5, "Number of cards drawn from the deck to choose from");
 
+            DelayConfig = Config.Bind(CompatibilityModName, "DelayBetweenDraws", 0.1f, "Delay (in seconds) between each card being drawn.");
+
             // apply patches
             new Harmony(ModId).PatchAll();
         }
@@ -50,6 +55,7 @@ namespace PickNCards
         {
             // call settings as to not orphan them
             picks = PicksConfig.Value;
+            delay = DelayConfig.Value;
 
             // add credits
             Unbound.RegisterCredits("Pick N Cards", new string[] { "Pykess (Code)", "Willis (Original picktwocards concept, icon)"}, new string[] { "github", "Buy me a coffee" }, new string[] { "https://github.com/pdcook/PickNCards", "https://www.buymeacoffee.com/Pykess" });
@@ -104,6 +110,14 @@ namespace PickNCards
             }
             MenuHandler.CreateSlider("Number of cards to draw", menu, 30, 1f, (float)DrawNCards.DrawNCards.maxDraws, DrawNCards.DrawNCards.NumDrawsConfig.Value, DrawsChanged, out UnityEngine.UI.Slider _, true);
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
+            void DelayChanged(float val)
+            {
+                PickNCards.DelayConfig.Value = UnityEngine.Mathf.Clamp(val, 0f, 0.5f);
+                PickNCards.delay = PickNCards.DelayConfig.Value;
+            }
+            MenuHandler.CreateSlider("Time between each card draw", menu, 30, 0f, 0.5f, PickNCards.DelayConfig.Value, DelayChanged, out UnityEngine.UI.Slider _, false);
+            MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
+
         }
         internal static IEnumerator SetPlayersCanPick(bool set)
         {
@@ -153,6 +167,67 @@ namespace PickNCards
                     BindingFlags.NonPublic, null, PlayerManager.instance, new object[] { picketIDToSet });
 
                 PickNCards.playerCanPickAgain[player] = true;
+            }
+        }
+
+        // patch to change draw rate
+        [HarmonyPatch]
+        class CardChoicePatchReplaceCards
+        {
+            static Type GetNestedReplaceCardsType()
+            {
+                Type[] nestedTypes = typeof(CardChoice).GetNestedTypes(BindingFlags.Instance | BindingFlags.NonPublic);
+                Type nestedType = null;
+
+                foreach (Type type in nestedTypes)
+                {
+                    if (type.Name.Contains("ReplaceCards"))
+                    {
+                        nestedType = type;
+                        break;
+                    }
+                }
+
+                return nestedType;
+            }
+
+            static MethodBase TargetMethod()
+            {
+                return AccessTools.Method(GetNestedReplaceCardsType(), "MoveNext");
+            }
+
+            static float GetNewDelay()
+            {
+                return PickNCards.delay;
+            }
+
+            static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+            {
+                List<CodeInstruction> codes = instructions.ToList();
+
+                FieldInfo f_theInt = ExtensionMethods.GetFieldInfo(typeof(PublicInt), "theInt");
+                MethodInfo m_GetNewDelay = ExtensionMethods.GetMethodInfo(typeof(CardChoicePatchReplaceCards), nameof(GetNewDelay));
+
+                int index = -1;
+                for (int i = 0; i < codes.Count; i++)
+                {
+                    if (codes[i].StoresField(f_theInt) && codes[i+1].opcode == OpCodes.Ldarg_0 && codes[i+2].opcode == OpCodes.Ldc_R4 && (float)(codes[i+2].operand) == 0.1f && codes[i+3].opcode == OpCodes.Newobj)
+                    {
+                        index = i;
+                        break;
+                    }
+                }
+                if (index == -1)
+                {
+                    throw new Exception("[REPLACECARDS PATCH] INSTRUCTION NOT FOUND");
+                }
+                else
+                {
+                    //codes[index + 2].operand = 0.0f;
+                    codes[index + 2] = new CodeInstruction(OpCodes.Call, m_GetNewDelay);
+                }
+
+                return codes.AsEnumerable();
             }
         }
     }
