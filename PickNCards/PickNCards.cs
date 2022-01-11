@@ -21,7 +21,7 @@ using System.Reflection.Emit;
 namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.2.0")]
+    [BepInPlugin(ModId, ModName, "0.2.1")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
@@ -37,7 +37,8 @@ namespace PickNCards
         internal static int picks;
         internal static float delay;
 
-        internal static Dictionary<Player, bool> playerCanPickAgain = new Dictionary<Player, bool>() { };
+        internal static Queue<int> playerIDsToPick = new Queue<int>() { };
+        private static Queue<int> _nextPlayerIDsToPick = new Queue<int>() { };
 
         private void Awake()
         {
@@ -67,7 +68,7 @@ namespace PickNCards
             Unbound.RegisterHandshake(PickNCards.ModId, this.OnHandShakeCompleted);
 
             // hooks for picking N cards
-            GameModeManager.AddHook(GameModeHooks.HookPickStart, (gm) => PickNCards.SetPlayersCanPick(false));
+            GameModeManager.AddHook(GameModeHooks.HookPickStart, (gm) => PickNCards.ResetPickQueue());
             GameModeManager.AddHook(GameModeHooks.HookPickEnd, PickNCards.ExtraPicks);
 
             // read settings to not orphan them
@@ -94,11 +95,11 @@ namespace PickNCards
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
             void PicksChanged(float val)
             {
-                PickNCards.PicksConfig.Value = UnityEngine.Mathf.RoundToInt(UnityEngine.Mathf.Clamp(val,1f,(float)PickNCards.maxPicks));
+                PickNCards.PicksConfig.Value = UnityEngine.Mathf.RoundToInt(UnityEngine.Mathf.Clamp(val,0f,(float)PickNCards.maxPicks));
                 PickNCards.picks = PickNCards.PicksConfig.Value;
                 OnHandShakeCompleted();
             }
-            MenuHandler.CreateSlider("Number of cards to pick", menu, 30, 1f, (float)PickNCards.maxPicks, PickNCards.PicksConfig.Value, PicksChanged, out UnityEngine.UI.Slider _, true);
+            MenuHandler.CreateSlider("Number of cards to pick", menu, 30, 0f, (float)PickNCards.maxPicks, PickNCards.PicksConfig.Value, PicksChanged, out UnityEngine.UI.Slider _, true);
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
             MenuHandler.CreateText("Draw N Cards Options", menu, out TextMeshProUGUI _, 60);
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
@@ -119,18 +120,16 @@ namespace PickNCards
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
 
         }
-        internal static IEnumerator SetPlayersCanPick(bool set)
+        internal static IEnumerator ResetPickQueue()
         {
-            foreach (Player player in PlayerManager.instance.players)
-            {
-                PickNCards.playerCanPickAgain[player] = set;
-            }
+            PickNCards.playerIDsToPick = new Queue<int>() { };
+            PickNCards._nextPlayerIDsToPick = new Queue<int>() { };
             yield break;
         }
         internal static IEnumerator ExtraPicks(IGameModeHandler gm)
         {
 
-            if (PickNCards.picks <= 1 || !PlayerManager.instance.players.Where(player => PickNCards.playerCanPickAgain[player]).Any())
+            if (PickNCards.picks <= 1 || PickNCards._nextPlayerIDsToPick.Count() < 1)
             {
                 yield break;
             }
@@ -139,11 +138,14 @@ namespace PickNCards
 
             for (int _ = 0; _ < PickNCards.picks - 1; _++)
             {
-                foreach (Player player in PlayerManager.instance.players.Where(player => PickNCards.playerCanPickAgain[player]))
+                PickNCards.playerIDsToPick = new Queue<int>(PickNCards._nextPlayerIDsToPick);
+                PickNCards._nextPlayerIDsToPick = new Queue<int>() { };
+                while (PickNCards.playerIDsToPick.Count() > 0)
                 {
+                    int playerID = PickNCards.playerIDsToPick.Dequeue();
                     yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickStart);
-                    CardChoiceVisuals.instance.Show(Enumerable.Range(0, PlayerManager.instance.players.Count).Where(i => PlayerManager.instance.players[i].playerID == player.playerID).First(), true);
-                    yield return CardChoice.instance.DoPick(1, player.playerID, PickerType.Player);
+                    CardChoiceVisuals.instance.Show(playerID, true);
+                    yield return CardChoice.instance.DoPick(1, playerID, PickerType.Player);
                     yield return new WaitForSecondsRealtime(0.1f);
                     yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickEnd);
                     yield return new WaitForSecondsRealtime(0.1f);
@@ -154,19 +156,33 @@ namespace PickNCards
 
             yield break;
         }
+        // patch to skip pick phase if requested
+        [Serializable]
+        [HarmonyPatch(typeof(CardChoiceVisuals), "Show")]
+        [HarmonyPriority(Priority.First)]
+        class CardChoiceVisualsPatchShow
+        {
+            private static bool Prefix(CardChoice __instance)
+            {
+                if (PickNCards.picks == 0) { return false; }
+                else { return true; }
+            }
+        }
 
         // patch to determine which players have picked this phase
         [Serializable]
         [HarmonyPatch(typeof(CardChoice), "DoPick")]
+        [HarmonyPriority(Priority.First)]
         class CardChoicePatchDoPick
         {
+            private static bool Prefix(CardChoice __instance)
+            {
+                if (PickNCards.picks == 0) { return false; }
+                else { return true; }
+            }
             private static void Postfix(CardChoice __instance, int picketIDToSet)
             {
-                Player player = (Player)typeof(PlayerManager).InvokeMember("GetPlayerWithID",
-                    BindingFlags.Instance | BindingFlags.InvokeMethod |
-                    BindingFlags.NonPublic, null, PlayerManager.instance, new object[] { picketIDToSet });
-
-                PickNCards.playerCanPickAgain[player] = true;
+                PickNCards._nextPlayerIDsToPick.Enqueue(picketIDToSet);
             }
         }
 
@@ -223,7 +239,6 @@ namespace PickNCards
                 }
                 else
                 {
-                    //codes[index + 2].operand = 0.0f;
                     codes[index + 2] = new CodeInstruction(OpCodes.Call, m_GetNewDelay);
                 }
 
