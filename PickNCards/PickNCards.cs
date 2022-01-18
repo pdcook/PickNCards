@@ -21,7 +21,7 @@ using System.Reflection.Emit;
 namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.2.1")]
+    [BepInPlugin(ModId, ModName, "0.2.2")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
@@ -31,17 +31,21 @@ namespace PickNCards
 
         private const int maxPicks = 5;
 
+        internal static PickNCards instance;
 
         public static ConfigEntry<int> PicksConfig;
         public static ConfigEntry<float> DelayConfig;
         internal static int picks;
         internal static float delay;
 
-        internal static Queue<int> playerIDsToPick = new Queue<int>() { };
-        private static Queue<int> _nextPlayerIDsToPick = new Queue<int>() { };
+        internal static bool lockPickQueue = false;
+        internal static List<int> playerIDsToPick = new List<int>() { };
 
         private void Awake()
         {
+
+            PickNCards.instance = this;
+
             // bind configs with BepInEx
             PicksConfig = Config.Bind(CompatibilityModName, "Picks", 1, "Total number of card picks per player per pick phase");
 
@@ -120,29 +124,54 @@ namespace PickNCards
             MenuHandler.CreateText(" ", menu, out TextMeshProUGUI _, 30);
 
         }
+        [UnboundRPC]
+        public static void RPC_RequestSync(int requestingPlayer)
+        {
+            NetworkingManager.RPC(typeof(PickNCards), nameof(PickNCards.RPC_SyncResponse), requestingPlayer, PhotonNetwork.LocalPlayer.ActorNumber);
+        }
+
+        [UnboundRPC]
+        public static void RPC_SyncResponse(int requestingPlayer, int readyPlayer)
+        {
+            if (PhotonNetwork.LocalPlayer.ActorNumber == requestingPlayer)
+            {
+                PickNCards.instance.RemovePendingRequest(readyPlayer, nameof(PickNCards.RPC_RequestSync));
+            }
+        }
+
+        private IEnumerator WaitForSyncUp()
+        {
+            if (PhotonNetwork.OfflineMode)
+            {
+                yield break;
+            }
+            yield return this.SyncMethod(nameof(PickNCards.RPC_RequestSync), null, PhotonNetwork.LocalPlayer.ActorNumber);
+        }
         internal static IEnumerator ResetPickQueue()
         {
-            PickNCards.playerIDsToPick = new Queue<int>() { };
-            PickNCards._nextPlayerIDsToPick = new Queue<int>() { };
+            PickNCards.playerIDsToPick = new List<int>() { };
+            PickNCards.lockPickQueue = false;
             yield break;
         }
         internal static IEnumerator ExtraPicks(IGameModeHandler gm)
         {
 
-            if (PickNCards.picks <= 1 || PickNCards._nextPlayerIDsToPick.Count() < 1)
+            if (PickNCards.picks <= 1 || PickNCards.playerIDsToPick.Count() < 1)
             {
                 yield break;
             }
 
-            yield return new WaitForSecondsRealtime(1f);
+            PickNCards.lockPickQueue = true;
+
+            yield return PickNCards.instance.WaitForSyncUp();
 
             for (int _ = 0; _ < PickNCards.picks - 1; _++)
             {
-                PickNCards.playerIDsToPick = new Queue<int>(PickNCards._nextPlayerIDsToPick);
-                PickNCards._nextPlayerIDsToPick = new Queue<int>() { };
-                while (PickNCards.playerIDsToPick.Count() > 0)
+                yield return PickNCards.instance.WaitForSyncUp();
+                for (int i = 0; i < PickNCards.playerIDsToPick.Count(); i++)
                 {
-                    int playerID = PickNCards.playerIDsToPick.Dequeue();
+                    yield return PickNCards.instance.WaitForSyncUp();
+                    int playerID = PickNCards.playerIDsToPick[i];
                     yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickStart);
                     CardChoiceVisuals.instance.Show(playerID, true);
                     yield return CardChoice.instance.DoPick(1, playerID, PickerType.Player);
@@ -182,7 +211,7 @@ namespace PickNCards
             }
             private static void Postfix(CardChoice __instance, int picketIDToSet)
             {
-                PickNCards._nextPlayerIDsToPick.Enqueue(picketIDToSet);
+                if (!PickNCards.lockPickQueue) { PickNCards.playerIDsToPick.Add(picketIDToSet); }
             }
         }
 
