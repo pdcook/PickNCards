@@ -211,7 +211,7 @@ namespace PickNCards
             }
             private static void Postfix(CardChoice __instance, int picketIDToSet)
             {
-                if (!PickNCards.lockPickQueue) { PickNCards.playerIDsToPick.Add(picketIDToSet); }
+                if (!PickNCards.lockPickQueue && /*checked if player is alreadly in the queue*/!PickNCards.playerIDsToPick.Contains(picketIDToSet)) { PickNCards.playerIDsToPick.Add(picketIDToSet); }
             }
         }
 
