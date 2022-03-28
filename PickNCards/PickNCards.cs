@@ -21,7 +21,7 @@ using System.Reflection.Emit;
 namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.2.2")]
+    [BepInPlugin(ModId, ModName, "0.2.3")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
@@ -63,7 +63,7 @@ namespace PickNCards
             delay = DelayConfig.Value;
 
             // add credits
-            Unbound.RegisterCredits("Pick N Cards", new string[] { "Pykess (Code)", "Willis (Original picktwocards concept, icon)"}, new string[] { "github", "Buy me a coffee" }, new string[] { "https://github.com/pdcook/PickNCards", "https://www.buymeacoffee.com/Pykess" });
+            Unbound.RegisterCredits("Pick N Cards", new string[] { "Pykess (Code)", "Willis (Original picktwocards concept, icon)"}, new string[] { "github", "Support Pykess" }, new string[] { "https://github.com/pdcook/PickNCards", "https://ko-fi.com/pykess" });
 
             // add GUI to modoptions menu
             Unbound.RegisterMenu(ModName, () => { }, this.NewGUI, null, false);
