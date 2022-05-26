@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using BepInEx;
 using BepInEx.Configuration;
 using UnboundLib;
@@ -40,6 +40,7 @@ namespace PickNCards
 
         internal static bool lockPickQueue = false;
         internal static List<int> playerIDsToPick = new List<int>() { };
+        internal static bool extraPicksInPorgress = false;
 
         private void Awake()
         {
@@ -149,40 +150,48 @@ namespace PickNCards
         }
         internal static IEnumerator ResetPickQueue()
         {
-            PickNCards.playerIDsToPick = new List<int>() { };
-            PickNCards.lockPickQueue = false;
+            if (!PickNCards.extraPicksInPorgress)
+            {
+                PickNCards.playerIDsToPick = new List<int>() { };
+                PickNCards.lockPickQueue = false;
+            }
             yield break;
         }
         internal static IEnumerator ExtraPicks(IGameModeHandler gm)
         {
 
-            if (PickNCards.picks <= 1 || PickNCards.playerIDsToPick.Count() < 1)
+            if (!PickNCards.extraPicksInPorgress)
             {
-                yield break;
-            }
+                if (PickNCards.picks <= 1 || PickNCards.playerIDsToPick.Count() < 1)
+                {
+                    yield break;
+                }
 
-            PickNCards.lockPickQueue = true;
-
-            yield return PickNCards.instance.WaitForSyncUp();
-
-            for (int _ = 0; _ < PickNCards.picks - 1; _++)
-            {
+                PickNCards.lockPickQueue = true;
+                PickNCards.extraPicksInPorgress = true;
                 yield return PickNCards.instance.WaitForSyncUp();
-                for (int i = 0; i < PickNCards.playerIDsToPick.Count(); i++)
+
+                for (int _ = 0; _ < PickNCards.picks - 1; _++)
                 {
                     yield return PickNCards.instance.WaitForSyncUp();
-                    int playerID = PickNCards.playerIDsToPick[i];
-                    yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickStart);
-                    CardChoiceVisuals.instance.Show(playerID, true);
-                    yield return CardChoice.instance.DoPick(1, playerID, PickerType.Player);
-                    yield return new WaitForSecondsRealtime(0.1f);
-                    yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickEnd);
-                    yield return new WaitForSecondsRealtime(0.1f);
+                    yield return GameModeManager.TriggerHook(GameModeHooks.HookPickStart);
+                    for (int i = 0; i < PickNCards.playerIDsToPick.Count(); i++)
+                    {
+                        yield return PickNCards.instance.WaitForSyncUp();
+                        int playerID = PickNCards.playerIDsToPick[i];
+                        yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickStart);
+                        CardChoiceVisuals.instance.Show(playerID, true);
+                        yield return CardChoice.instance.DoPick(1, playerID, PickerType.Player);
+                        yield return new WaitForSecondsRealtime(0.1f);
+                        yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickEnd);
+                        yield return new WaitForSecondsRealtime(0.1f);
+                    }
+                    yield return GameModeManager.TriggerHook(GameModeHooks.HookPickEnd);
                 }
+
+                CardChoiceVisuals.instance.Hide();
+                PickNCards.extraPicksInPorgress = false;
             }
-
-            CardChoiceVisuals.instance.Hide();
-
             yield break;
         }
         // patch to skip pick phase if requested
