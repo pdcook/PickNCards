@@ -73,8 +73,8 @@ namespace PickNCards
             Unbound.RegisterHandshake(PickNCards.ModId, this.OnHandShakeCompleted);
 
             // hooks for picking N cards
-            GameModeManager.AddHook(GameModeHooks.HookPickStart, (gm) => PickNCards.ResetPickQueue());
-            GameModeManager.AddHook(GameModeHooks.HookPickEnd, PickNCards.ExtraPicks);
+            GameModeManager.AddHook(GameModeHooks.HookPickStart, (gm) => PickNCards.ResetPickQueue(), GameModeHooks.Priority.First);
+            GameModeManager.AddHook(GameModeHooks.HookPickEnd, PickNCards.ExtraPicks, GameModeHooks.Priority.First);
 
             // read settings to not orphan them
             DrawNCards.DrawNCards.numDraws = DrawNCards.DrawNCards.NumDrawsConfig.Value;
@@ -174,7 +174,7 @@ namespace PickNCards
                 for (int _ = 0; _ < PickNCards.picks - 1; _++)
                 {
                     yield return PickNCards.instance.WaitForSyncUp();
-                    yield return GameModeManager.TriggerHook(GameModeHooks.HookPickStart);
+                    //yield return GameModeManager.TriggerHook(GameModeHooks.HookPickStart);
                     for (int i = 0; i < PickNCards.playerIDsToPick.Count(); i++)
                     {
                         yield return PickNCards.instance.WaitForSyncUp();
@@ -186,7 +186,7 @@ namespace PickNCards
                         yield return GameModeManager.TriggerHook(GameModeHooks.HookPlayerPickEnd);
                         yield return new WaitForSecondsRealtime(0.1f);
                     }
-                    yield return GameModeManager.TriggerHook(GameModeHooks.HookPickEnd);
+                    //yield return GameModeManager.TriggerHook(GameModeHooks.HookPickEnd);
                 }
 
                 CardChoiceVisuals.instance.Hide();
