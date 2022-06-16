@@ -273,7 +273,7 @@ namespace DrawNCards
     {
         private static bool Prefix(CardChoiceVisuals __instance)
         {
-            if (!(bool)__instance.GetFieldValue("isShowinig"))
+            if (!(bool)__instance.GetFieldValue("isShowing"))
             {
                 return false;
             }
