@@ -21,7 +21,7 @@ using System.Reflection.Emit;
 namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.2.4")]
+    [BepInPlugin(ModId, ModName, "0.2.5")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
@@ -71,6 +71,9 @@ namespace PickNCards
             
             // handshake to sync settings
             Unbound.RegisterHandshake(PickNCards.ModId, this.OnHandShakeCompleted);
+
+            // hook for resting start of game things
+            GameModeManager.AddHook(GameModeHooks.HookGameStart, (gm) => ResetPickerDraws(), GameModeHooks.Priority.First);
 
             // hooks for picking N cards
             GameModeManager.AddHook(GameModeHooks.HookPickStart, (gm) => PickNCards.ResetPickQueue(), GameModeHooks.Priority.First);
@@ -138,6 +141,11 @@ namespace PickNCards
             {
                 PickNCards.instance.RemovePendingRequest(readyPlayer, nameof(PickNCards.RPC_RequestSync));
             }
+        }
+
+        internal static IEnumerator ResetPickerDraws() {
+            DrawNCards.DrawNCards.pickerNumDraws = new Dictionary<int, int>();
+            yield break;
         }
 
         private IEnumerator WaitForSyncUp()
