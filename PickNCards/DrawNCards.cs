@@ -30,6 +30,27 @@ namespace DrawNCards
         public static ConfigEntry<int> NumDrawsConfig;
         internal static int numDraws;
 
+        public static int NumDraws { get { return numDraws; } }
+
+        internal static Dictionary<int, int> pickerNumDraws = new Dictionary<int, int>();
+
+
+        internal static GameObject _cardVis = null;
+        internal static GameObject cardVis
+        {
+            get
+            {
+                if (_cardVis != null) { return _cardVis; }
+                else
+                {
+                    _cardVis = ((Transform[])CardChoice.instance.GetFieldValue("children"))[0].gameObject;
+                    return _cardVis;
+                }
+            }
+            set { }
+        }
+
+
         private const float arc_A = 0.2102040816f;
         private const float arc_B = 1.959183674f;
         private const float arc_C = -1.959183674f;
@@ -61,10 +82,9 @@ namespace DrawNCards
         private const float absMaxX = 0.85f;
         private const float defMaxXWorld = 25f;
         internal const float z = -5f;
-        internal static List<Vector3> GetPositions(int N, float offset = 0f)
+        internal static List<Vector3> GetPositions(int N, float offset = 0f, bool first = true)
         {
             // everything is in SCREEN UNITS
-
             if (N == 0)
             {
                 throw new Exception("Must have at least one card.");
@@ -77,16 +97,17 @@ namespace DrawNCards
             {
                 offset -= 0.025f;
             }
-            else if (N > DrawNCards.maxDraws / 2)
+            else if (N > 10)
             {
-                int N1 = (int)UnityEngine.Mathf.RoundToInt(N / 2);
+                int rows = UnityEngine.Mathf.CeilToInt(N / 10f);
+                int N1 = UnityEngine.Mathf.RoundToInt(N / rows);
                 int N2 = N - N1;
                 int k1;
                 int k2;
-                if (N1 >= N2) { k1 = N1; k2 = N2; }
+                if (N1 >= N2 || N2>10) { k1 = N1; k2 = N2; }
                 else { k1 = N2; k2 = N1; }
-                List<Vector3> positions1 = GetPositions(k1, offset - 0.16f);
-                List<Vector3> positions2 = GetPositions(k2, offset + 0.125f);
+                List<Vector3> positions1 = GetPositions(k1, offset - (0.06f + (0.1f * (rows-1))), false);
+                List<Vector3> positions2 = GetPositions(k2, offset + (first? 0.125f:0.05f), false);
                 return positions1.Concat(positions2).ToList();
             }
 
@@ -159,19 +180,20 @@ namespace DrawNCards
 
             if (N == 5)
             {
-                return new Vector3(1f, 1f, 1f) * factor;
+                return Vector3.one * factor;
             }
             else if (N<5)
             {
                 return new Vector3(1f, 1f, 1f) * factor * (1f + 1f / (2f*N));
             }
-            else if (N > DrawNCards.maxDraws / 2)
+            else if (N > 10)
             {
-                return new Vector3(1f, 1f, 1f) * factor * UnityEngine.Mathf.Clamp(5f / (N / 2 + 2), 3f / 5f, 1f);
+                int rows = UnityEngine.Mathf.CeilToInt(N / 10f);
+                return Vector3.one* factor * UnityEngine.Mathf.Clamp(5f / (N / rows + rows), 3f / (2.5f*rows), 1f);
             }
             else
             {
-                return new Vector3(1f, 1f, 1f) * factor * UnityEngine.Mathf.Clamp(5f / (N - 1), 3f / 5f, 1f);
+                return Vector3.one * factor * UnityEngine.Mathf.Clamp(5f / (N - 1), 3f / 5f, 1f);
             }
 
         }
@@ -193,7 +215,43 @@ namespace DrawNCards
             return rotations;
         }
 
+        public static int GetPickerDraws(int pickerIDToGet) {
+            return pickerNumDraws.ContainsKey(pickerIDToGet) ? pickerNumDraws[pickerIDToGet] : numDraws;
+        }
+
+        public static void SetPickerDraws(int pickerIDToSet, int drawCountToSet)
+        {
+            if(PhotonNetwork.OfflineMode || PhotonNetwork.IsMasterClient)
+            {
+                drawCountToSet = UnityEngine.Mathf.Clamp(drawCountToSet, 1, 30);
+                NetworkingManager.RPC(typeof(DrawNCards),nameof(RPCA_SetPickerDraws), pickerIDToSet, drawCountToSet);
+            }
+
+        }
+
+        [UnboundRPC]
+        public static void RPCA_SetPickerDraws(int pickerIDToSet, int drawCountToSet) 
+        {
+            pickerNumDraws[pickerIDToSet] = drawCountToSet;
+        }
+
     }
+    [Serializable]
+    [HarmonyPatch(typeof(Player), "FullReset")]
+    class PlayerPatchFullReset
+    {
+        [HarmonyPriority(Priority.LowerThanNormal)]
+        [HarmonyPostfix]
+        private static void ResetCardsToDraw(Player __instance)
+        {
+            if (DrawNCards.pickerNumDraws.ContainsKey(__instance.playerID))
+            {
+                DrawNCards.pickerNumDraws.Remove(__instance.playerID);
+            }
+        }
+    }
+
+
     // patch to change scale of cards
     [Serializable]
     [HarmonyPatch(typeof(CardChoice), "Spawn")]
@@ -201,7 +259,7 @@ namespace DrawNCards
     {
         private static void Postfix(ref GameObject __result)
         {
-            __result.transform.localScale = DrawNCards.GetScale(DrawNCards.numDraws);
+            __result.transform.localScale = DrawNCards.cardVis.transform.localScale;
 
             NetworkingManager.RPC_Others(typeof(CardChoicePatchSpawn), nameof(RPCO_AddRemotelySpawnedCard), new object[] { __result.GetComponent<PhotonView>().ViewID });
         }
@@ -212,7 +270,7 @@ namespace DrawNCards
             GameObject card = PhotonView.Find(viewID).gameObject;
 
             // set the scale
-            card.transform.localScale = DrawNCards.GetScale(DrawNCards.numDraws);
+            card.transform.localScale = DrawNCards.cardVis.transform.localScale;
         }
     }
     // reconfigure card placement before each pick in case the map size has changed
@@ -220,21 +278,7 @@ namespace DrawNCards
     [HarmonyPatch(typeof(CardChoice), "StartPick")]
     class CardChoicePatchStartPick
     {
-        private static GameObject _cardVis = null;
-        private static GameObject cardVis
-        {
-            get
-            {
-                if (_cardVis != null) { return _cardVis; }
-                else
-                {
-                    _cardVis = ((Transform[])CardChoice.instance.GetFieldValue("children"))[0].gameObject;
-                    return _cardVis;
-                }
-            }
-            set { }
-        }
-        private static void Prefix(CardChoice __instance)
+        private static void Prefix(CardChoice __instance, int pickerIDToSet)
         {
             // remove all children except the zeroth
             foreach (Transform child in ((Transform[])CardChoice.instance.GetFieldValue("children")).Skip(1))
@@ -242,11 +286,17 @@ namespace DrawNCards
                 UnityEngine.GameObject.Destroy(child.gameObject);
             }
 
-            List<Vector3> positions = DrawNCards.GetPositions(DrawNCards.numDraws).WorldPoint();
-            List<Quaternion> rotations = DrawNCards.GetRotations(DrawNCards.numDraws);
-            Vector3 scale = DrawNCards.GetScale(DrawNCards.numDraws);
+            int numDraws = 1;
+            List<Vector3> positions = new List<Vector3>() { Vector3.zero };
+            List<Quaternion> rotations = new List<Quaternion>() { Quaternion.identity };
+            Vector3 scale = Vector3.one;
 
-            List<Transform> children = new List<Transform>() { cardVis.transform };
+            numDraws = DrawNCards.pickerNumDraws.ContainsKey(pickerIDToSet) ? DrawNCards.pickerNumDraws[pickerIDToSet] : DrawNCards.numDraws;
+            positions = DrawNCards.GetPositions(numDraws).WorldPoint();
+            rotations = DrawNCards.GetRotations(numDraws);
+            scale = DrawNCards.GetScale(numDraws);
+
+            List<Transform> children = new List<Transform>() { DrawNCards.cardVis.transform };
 
             // change properties of the first cardvis
             children[0].position = positions[0];
@@ -254,9 +304,9 @@ namespace DrawNCards
             children[0].localScale = scale;
 
             // start at 1 since the first cardVis should already be present
-            for (int i = 1; i < DrawNCards.numDraws; i++)
+            for (int i = 1; i < numDraws; i++)
             {
-                GameObject newChild = UnityEngine.GameObject.Instantiate(cardVis, positions[i], rotations[i], __instance.transform);
+                GameObject newChild = UnityEngine.GameObject.Instantiate(DrawNCards.cardVis, positions[i], rotations[i], __instance.transform);
                 newChild.name = children.Count.ToString();
                 children.Add(newChild.transform);
             }
