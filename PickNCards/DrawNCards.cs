@@ -32,19 +32,24 @@ namespace DrawNCards
 
         public static int NumDraws { get { return numDraws; } }
 
-        internal static Dictionary<int, int> pickerNumDraws;
+        internal static Dictionary<int, int> pickerNumDraws = new Dictionary<int, int>();
 
 
         internal static GameObject _cardVis = null;
-        internal static GameObject cardVis {
-            get {
-                if(_cardVis!=null) { return _cardVis; } else {
-                    _cardVis=((Transform[])CardChoice.instance.GetFieldValue("children"))[0].gameObject;
+        internal static GameObject cardVis
+        {
+            get
+            {
+                if (_cardVis != null) { return _cardVis; }
+                else
+                {
+                    _cardVis = ((Transform[])CardChoice.instance.GetFieldValue("children"))[0].gameObject;
                     return _cardVis;
                 }
             }
             set { }
         }
+
 
         private const float arc_A = 0.2102040816f;
         private const float arc_B = 1.959183674f;
@@ -231,6 +236,22 @@ namespace DrawNCards
         }
 
     }
+    [Serializable]
+    [HarmonyPatch(typeof(Player), "FullReset")]
+    class PlayerPatchFullReset
+    {
+        [HarmonyPriority(Priority.LowerThanNormal)]
+        [HarmonyPostfix]
+        private static void ResetCardsToDraw(Player __instance)
+        {
+            if (DrawNCards.pickerNumDraws.ContainsKey(__instance.playerID))
+            {
+                DrawNCards.pickerNumDraws.Remove(__instance.playerID);
+            }
+        }
+    }
+
+
     // patch to change scale of cards
     [Serializable]
     [HarmonyPatch(typeof(CardChoice), "Spawn")]
@@ -264,10 +285,16 @@ namespace DrawNCards
             {
                 UnityEngine.GameObject.Destroy(child.gameObject);
             }
-            var numDraws = DrawNCards.pickerNumDraws.ContainsKey(pickerIDToSet) ? DrawNCards.pickerNumDraws[pickerIDToSet] : DrawNCards.numDraws;
-            List<Vector3> positions = DrawNCards.GetPositions(numDraws).WorldPoint();
-            List<Quaternion> rotations = DrawNCards.GetRotations(numDraws);
-            Vector3 scale = DrawNCards.GetScale(numDraws);
+
+            int numDraws = 1;
+            List<Vector3> positions = new List<Vector3>() { Vector3.zero };
+            List<Quaternion> rotations = new List<Quaternion>() { Quaternion.identity };
+            Vector3 scale = Vector3.one;
+
+            numDraws = DrawNCards.pickerNumDraws.ContainsKey(pickerIDToSet) ? DrawNCards.pickerNumDraws[pickerIDToSet] : DrawNCards.numDraws;
+            positions = DrawNCards.GetPositions(numDraws).WorldPoint();
+            rotations = DrawNCards.GetRotations(numDraws);
+            scale = DrawNCards.GetScale(numDraws);
 
             List<Transform> children = new List<Transform>() { DrawNCards.cardVis.transform };
 

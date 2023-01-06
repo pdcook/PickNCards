@@ -21,7 +21,7 @@ using System.Reflection.Emit;
 namespace PickNCards
 {
     [BepInDependency("com.willis.rounds.unbound", BepInDependency.DependencyFlags.HardDependency)]
-    [BepInPlugin(ModId, ModName, "0.2.5")]
+    [BepInPlugin(ModId, ModName, "0.2.6")]
     [BepInProcess("Rounds.exe")]
     public class PickNCards : BaseUnityPlugin
     {
