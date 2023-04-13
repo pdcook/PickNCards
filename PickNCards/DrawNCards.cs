@@ -61,7 +61,7 @@ namespace DrawNCards
         private const float absMaxX = 0.85f;
         private const float defMaxXWorld = 25f;
         internal const float z = -5f;
-        internal static List<Vector3> GetPositions(int N, float offset = 0f)
+        public static List<Vector3> GetPositions(int N, float offset = 0f)
         {
             // everything is in SCREEN UNITS
 
@@ -152,7 +152,7 @@ namespace DrawNCards
 
             return positions;
         }
-        internal static Vector3 GetScale(int N)
+        public static Vector3 GetScale(int N)
         {
             // camera scale factor
             float factor = 1.04f * absMaxX.xWorldPoint() / defMaxXWorld;
@@ -181,7 +181,7 @@ namespace DrawNCards
             // x is in SCREEN units
             return (-maxPhi / (absMaxX-xC)) * (x-xC);
         }
-        internal static List<Quaternion> GetRotations(int N)
+        public static List<Quaternion> GetRotations(int N)
         {
             List<Vector3> positions = GetPositions(N);
 
